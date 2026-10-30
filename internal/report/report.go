@@ -1,4 +1,4 @@
-// Package report prints the result table and saves result.json.
+// Package report prints the result table and saves result-tb-<timestamp>.json.
 package report
 
 import (
@@ -109,12 +109,17 @@ func Table(w io.Writer, rep *runner.Report, color bool) {
 	fmt.Fprintln(w)
 }
 
-// Save writes result.json into dir and returns its path.
+// FileName is result-tb-<start time in UTC>.json, e.g. result-tb-20261030T143509Z.json.
+func FileName(rep *runner.Report) string {
+	return "result-tb-" + rep.Started.UTC().Format("20060102T150405Z") + ".json"
+}
+
+// Save writes the report into dir as FileName(rep) and returns its path.
 func Save(dir string, rep *runner.Report) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	p := filepath.Join(dir, "result.json")
+	p := filepath.Join(dir, FileName(rep))
 	b, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return "", err
@@ -122,7 +127,7 @@ func Save(dir string, rep *runner.Report) (string, error) {
 	return p, os.WriteFile(p, b, 0o644)
 }
 
-// Load reads a saved result.json.
+// Load reads a saved result file.
 func Load(path string) (*runner.Report, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

@@ -33,7 +33,7 @@ Usage:
   tunnelbench run   [flags]        on the Iran server: print a link, wait for Kharej, run the benchmark
   tunnelbench join                 on the Kharej server: paste the link, then it serves tests
   tunnelbench local [flags]        run every method over loopback on this machine (self-test)
-  tunnelbench show  [-rescore] <result.json>  print a saved result again
+  tunnelbench show  [-rescore] <result-tb-….json>  print a saved result again
   tunnelbench methods              list the methods in this build
   tunnelbench version
 
@@ -125,7 +125,7 @@ func cmdRun(ctx context.Context, args []string, local bool) error {
 	soakTop := fs.Int("soak-top", 3, "how many of the best methods get a soak")
 	quick := fs.Bool("quick", false, "short run: 8s transfers, 5 probes, no soak")
 	sni := fs.String("sni", "www.speedtest.net", "SNI for TLS, WSS and QUIC methods")
-	out := fs.String("out", "", "directory for result.json (default ./tunnelbench-runs/<time>)")
+	out := fs.String("out", "", "directory for the result-tb-<timestamp>.json file (default ./tunnelbench-runs/<time>)")
 	_ = fs.Parse(args)
 
 	if *quick {
@@ -245,7 +245,7 @@ func cmdShow(args []string) error {
 	rescore := fs.Bool("rescore", false, "recompute status and score with this version's rules")
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
-		return errors.New("usage: tunnelbench show [-rescore] <result.json>")
+		return errors.New("usage: tunnelbench show [-rescore] <result-tb-….json>")
 	}
 	rep, err := report.Load(fs.Arg(0))
 	if err != nil {

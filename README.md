@@ -28,7 +28,7 @@ Each method goes through three stages:
 2. **Benchmark** — download and upload, single stream and 4 parallel streams, measured every second at the receiving side.
 3. **Soak** — the 3 best methods keep downloading for 5 minutes, reconnecting after every reset. This exposes duration-based kills and throttling that short tests miss.
 
-A method is **UNSTABLE** if it has stalled seconds (below 10% of its good seconds), moves no data in one direction, or one direction collapses below 10% of the other. `tunnelbench show -rescore <result.json>` re-applies the current rules to an older run.
+A method is **UNSTABLE** if it has stalled seconds (below 10% of its good seconds), moves no data in one direction, or one direction collapses below 10% of the other. `tunnelbench show -rescore <result-tb-….json>` re-applies the current rules to an older run.
 
 **DOWN** is Kharej → Iran (what users download in Instagram and Telegram); **UP** is Iran → Kharej. **FLOOR** is the 10th-percentile second, i.e. the speed on a bad second. **CV** is how much the speed varies (lower is steadier). The score weights download 30%, upload 15%, floor 20%, stability 20% and latency 15%, each relative to the best method in the same run.
 
@@ -71,7 +71,7 @@ sudo tunnelbench join
 Paste the link from the Iran server: tb://<token>@<iran-ip>:20000?fp=<fingerprint>&sni=www.speedtest.net
 ```
 
-The test starts as soon as the agent joins. Results are printed as a table and saved to `tunnelbench-runs/<time>/result.json`; `tunnelbench show <file>` prints a saved run again.
+The test starts as soon as the agent joins. Results are printed as a table and saved to `tunnelbench-runs/<time>/result-tb-<timestamp>.json` (start time in UTC, e.g. `result-tb-20261030T143509Z.json`); `tunnelbench show <file>` prints a saved run again.
 
 Open the control port and the ports after it (TCP **and** UDP) on both firewalls; `run` prints the exact range. With `ufw`:
 
@@ -129,7 +129,7 @@ internal/measure/     test protocol: echo pings, framed transfers, per-second sa
 internal/plan/        one test stage, run by whichever side dials
 internal/control/     command channel; the agent reconnects and requests are de-duplicated
 internal/runner/      orchestration, status rules and scoring
-internal/report/      table and result.json
+internal/report/      table and result-tb-<timestamp>.json
 ```
 
 Adding a method = one new file in `internal/transport/` that implements `Transport` and calls `Register` in `init()`; the measurement and scoring pick it up automatically.

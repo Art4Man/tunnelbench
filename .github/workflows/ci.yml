@@ -42,7 +42,8 @@ jobs:
           go build -o tunnelbench ./cmd/tunnelbench
           ./tunnelbench methods
           ./tunnelbench local --bench 2s --tries 2 --soak 5s --soak-top 1 --listen 127.0.0.1:23000 --out ./ci-run
-          test -s ./ci-run/result.json
+          ls ./ci-run/result-tb-*.json
+          test -s ./ci-run/result-tb-*.json
 
   build:
     runs-on: ubuntu-latest

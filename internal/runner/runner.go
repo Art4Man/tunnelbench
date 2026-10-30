@@ -58,7 +58,7 @@ type Config struct {
 	Progress   io.Writer
 }
 
-// Report is everything written to result.json.
+// Report is everything written to the result-tb-<timestamp>.json file.
 type Report struct {
 	Version    string        `json:"version"`
 	Started    time.Time     `json:"started"`
