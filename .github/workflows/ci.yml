@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Raise UDP buffer limits for QUIC and KCP
+        run: |
+          sudo sysctl -w net.core.rmem_max=8388608
+          sudo sysctl -w net.core.wmem_max=8388608
+      - name: Unit and loopback tests
+        run: go test -race -count=1 -timeout 10m ./...
+      - name: Local self-test of the CLI
+        run: |
+          go build -o tunnelbench ./cmd/tunnelbench
+          ./tunnelbench methods
+          ./tunnelbench local --bench 2s --tries 2 --soak 5s --soak-top 1 --listen 127.0.0.1:23000 --out ./ci-run
+          test -s ./ci-run/result.json
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o /dev/null ./cmd/tunnelbench

@@ -1,0 +1,6 @@
+/tunnelbench
+/dist/
+tunnelbench-runs/
+*.test
+*.out
+.DS_Store
