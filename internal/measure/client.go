@@ -243,6 +243,10 @@ func Push(ctx context.Context, dial DialFunc, token string, d time.Duration, str
 				fe.set(err)
 				return
 			}
+			if _, err := io.ReadFull(c, make([]byte, 1)); err != nil { // listener is ready
+				fe.set(err)
+				return
+			}
 			if _, err := sendFrames(c, d, 0); err != nil {
 				fe.set(err)
 				return

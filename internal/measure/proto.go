@@ -279,6 +279,13 @@ func (s *Server) Serve(c net.Conn) {
 		_, _ = io.Copy(io.Discard, c)
 	case OpPush:
 		m := newMeter(s.groupStart(req.Group))
+		// Tell the dialer we are reading before it sends bulk data. KCP has no
+		// handshake: without this, the first burst can hit the session's default
+		// window before Accept tunes it, and the sender idles until its 7 s probe.
+		_ = c.SetWriteDeadline(time.Now().Add(15 * time.Second))
+		if _, err := c.Write([]byte{1}); err != nil {
+			return
+		}
 		_ = c.SetReadDeadline(time.Now().Add(d + 30*time.Second))
 		got, err := recvFrames(c, m)
 		rep := pushReport{Buckets: m.bytes(), Bytes: got}
