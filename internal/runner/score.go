@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -53,10 +54,17 @@ func Summarize(r *Row) {
 	}
 	if r.Down1 != nil {
 		st := measure.Analyze(r.Down1.Mbps)
-		s.Down1Mbps, s.FloorMbps, s.CV, s.Stalls = st.MedianMbps, st.FloorMbps, st.CV, st.Stalls
+		s.Down1Mbps, s.FloorMbps, s.CV = st.MedianMbps, st.FloorMbps, st.CV
 	}
 	if r.DownN != nil {
 		s.DownMbps = measure.Analyze(r.DownN.Mbps).MedianMbps
+	}
+	// stalls in any of the four transfers: users notice upload stalls too
+	s.Stalls = 0
+	for _, t := range []*measure.Transfer{r.Down1, r.Up1, r.DownN, r.UpN} {
+		if t != nil {
+			s.Stalls += measure.Analyze(t.Mbps).Stalls
+		}
 	}
 	if r.UpN != nil {
 		s.UpMbps = measure.Analyze(r.UpN.Mbps).MedianMbps
@@ -86,6 +94,22 @@ func Summarize(r *Row) {
 		s.FloorMbps = st.FloorMbps
 	}
 
+	// A method that moves data in only one direction, or collapses in one
+	// direction, is not usable for a VPN however fast the other side is.
+	collapse := ""
+	if r.Down1 != nil || r.DownN != nil || r.Up1 != nil || r.UpN != nil {
+		switch {
+		case s.DownMbps <= 0:
+			collapse = "no data Kharej→Iran (download)"
+		case s.UpMbps <= 0:
+			collapse = "no data Iran→Kharej (upload)"
+		case s.DownMbps < 0.1*s.UpMbps:
+			collapse = fmt.Sprintf("download collapsed: %.0f vs %.0f Mbit/s up", s.DownMbps, s.UpMbps)
+		case s.UpMbps < 0.1*s.DownMbps:
+			collapse = fmt.Sprintf("upload collapsed: %.0f vs %.0f Mbit/s down", s.UpMbps, s.DownMbps)
+		}
+	}
+
 	switch {
 	case r.Probe == nil:
 		s.Status = StatusSkipped
@@ -94,10 +118,17 @@ func Summarize(r *Row) {
 		if len(r.Probe.Errors) > 0 {
 			s.Note = r.Probe.Errors[0]
 		}
-	case s.ProbeSuccess < 0.9 || !r.Probe.BurstOK || benchErr || s.Resets > 0 || s.Survival < 0.9:
+	case s.ProbeSuccess < 0.9 || !r.Probe.BurstOK || benchErr || s.Resets > 0 || s.Survival < 0.9 ||
+		collapse != "" || s.Stalls > 0:
 		s.Status = StatusUnstable
-		if s.Note == "" && !r.Probe.BurstOK {
+		switch {
+		case s.Note != "":
+		case collapse != "":
+			s.Note = collapse
+		case !r.Probe.BurstOK:
 			s.Note = "dies after a few packets (2 MB burst failed)"
+		case s.Stalls > 0:
+			s.Note = fmt.Sprintf("%d stalled seconds", s.Stalls)
 		}
 	default:
 		s.Status = StatusOK

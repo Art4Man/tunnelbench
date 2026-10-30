@@ -20,8 +20,8 @@ func smuxConfig() *smux.Config {
 	c.Version = 2
 	c.KeepAliveInterval = 10 * time.Second
 	c.KeepAliveTimeout = 30 * time.Second
-	c.MaxReceiveBuffer = 16 << 20
-	c.MaxStreamBuffer = 4 << 20
+	c.MaxReceiveBuffer = 64 << 20
+	c.MaxStreamBuffer = 16 << 20
 	return c
 }
 

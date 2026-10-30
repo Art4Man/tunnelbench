@@ -17,8 +17,8 @@ func tuneTCP(c net.Conn) {
 		_ = tc.SetNoDelay(true)
 		_ = tc.SetKeepAlive(true)
 		_ = tc.SetKeepAlivePeriod(15 * time.Second)
-		_ = tc.SetReadBuffer(4 << 20)
-		_ = tc.SetWriteBuffer(4 << 20)
+		// No SetReadBuffer/SetWriteBuffer: a fixed SO_RCVBUF turns off Linux
+		// buffer auto-tuning and capped one stream near 430 Mbit/s at 78 ms RTT.
 	}
 }
 

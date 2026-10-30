@@ -33,7 +33,7 @@ Usage:
   tunnelbench run   [flags]        on the Iran server: print a link, wait for Kharej, run the benchmark
   tunnelbench join                 on the Kharej server: paste the link, then it serves tests
   tunnelbench local [flags]        run every method over loopback on this machine (self-test)
-  tunnelbench show  <result.json>  print a saved result again
+  tunnelbench show  [-rescore] <result.json>  print a saved result again
   tunnelbench methods              list the methods in this build
   tunnelbench version
 
@@ -178,6 +178,9 @@ func cmdRun(ctx context.Context, args []string, local bool) error {
 		*kharejIP, _, _ = net.SplitHostPort(from.String())
 	}
 	fmt.Printf("Agent joined: %s (%s, version %s, root=%v)\n\n", hello.Hostname, *kharejIP, hello.Version, hello.Root)
+	if hello.Version != version {
+		warn(fmt.Sprintf("the Kharej agent runs version %s but this server runs %s; update both so results are comparable", hello.Version, version))
+	}
 
 	cfg := runner.Config{
 		Ctrl: ctrl, Opts: o, IranHost: *publicIP, KharejHost: *kharejIP, BindHost: host,
@@ -238,12 +241,22 @@ func cmdJoin(ctx context.Context, args []string) error {
 }
 
 func cmdShow(args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: tunnelbench show <result.json>")
+	fs := flag.NewFlagSet("show", flag.ExitOnError)
+	rescore := fs.Bool("rescore", false, "recompute status and score with this version's rules")
+	_ = fs.Parse(args)
+	if fs.NArg() != 1 {
+		return errors.New("usage: tunnelbench show [-rescore] <result.json>")
 	}
-	rep, err := report.Load(args[0])
+	rep, err := report.Load(fs.Arg(0))
 	if err != nil {
 		return err
+	}
+	if *rescore {
+		for _, r := range rep.Rows {
+			r.Summary = runner.Summary{}
+			runner.Summarize(r)
+		}
+		runner.ScoreAll(rep.Rows)
 	}
 	report.Table(os.Stdout, rep, report.UseColor(os.Stdout))
 	return nil

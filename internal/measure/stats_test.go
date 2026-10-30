@@ -8,8 +8,8 @@ import (
 func TestAnalyze(t *testing.T) {
 	// last second is partial and must be ignored
 	st := Analyze([]float64{100, 100, 100, 5, 100, 100, 1})
-	if st.Seconds != 6 {
-		t.Fatalf("seconds = %d, want 6", st.Seconds)
+	if st.Seconds != 5 {
+		t.Fatalf("seconds = %d, want 5 (partial last and ramp-up first second dropped)", st.Seconds)
 	}
 	if st.MedianMbps != 100 {
 		t.Errorf("median = %v, want 100", st.MedianMbps)
@@ -23,6 +23,14 @@ func TestAnalyze(t *testing.T) {
 	steady := Analyze([]float64{50, 50, 50, 50, 10})
 	if steady.CV != 0 || math.Abs(steady.FloorMbps-50) > 1e-9 {
 		t.Errorf("steady run: %+v", steady)
+	}
+}
+
+func TestAnalyzeMostlyStuck(t *testing.T) {
+	// the reverse kcp-fec pattern from a real run: stuck, then one burst
+	st := Analyze([]float64{0.3, 0, 0, 0, 0, 0, 0, 84, 0.5})
+	if st.Stalls != 6 || st.MedianMbps != 0 {
+		t.Fatalf("stuck transfer not detected: %+v", st)
 	}
 }
 

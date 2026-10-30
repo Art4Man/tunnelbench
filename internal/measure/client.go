@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net"
 	"sort"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -36,8 +39,27 @@ func (p ProbeResult) SuccessRate() float64 {
 	return float64(p.Connected) / float64(p.Tries)
 }
 
+// explain turns low-level network errors into what they usually mean on a
+// filtered route.
+func explain(err error) string {
+	var ne net.Error
+	msg := err.Error()
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout(),
+		strings.Contains(msg, "no recent network activity"):
+		return "no answer before the timeout (likely blocked)"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "connection refused (port closed or firewalled)"
+	case errors.Is(err, syscall.ECONNRESET), strings.Contains(msg, "connection reset"):
+		return "connection reset by the network (likely DPI)"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "connection closed mid-test (likely DPI)"
+	}
+	return msg
+}
+
 func (p *ProbeResult) addErr(err error) {
-	s := err.Error()
+	s := explain(err)
 	for _, e := range p.Errors {
 		if e == s {
 			return
@@ -315,15 +337,19 @@ type Stats struct {
 	MeanMbps   float64 `json:"mean_mbps"`
 	FloorMbps  float64 `json:"floor_mbps"` // 10th percentile second
 	CV         float64 `json:"cv"`         // stddev / mean
-	Stalls     int     `json:"stalls"`     // seconds below 10% of median
+	Stalls     int     `json:"stalls"`     // seconds below 10% of the 90th percentile
 	Seconds    int     `json:"seconds"`
 }
 
-// Analyze drops the trailing partial second and summarises the rest.
+// Analyze drops the trailing partial second and the first (ramp-up)
+// second, and summarises the steady state that remains.
 func Analyze(mbps []float64) Stats {
 	s := append([]float64(nil), mbps...)
 	if len(s) > 2 {
 		s = s[:len(s)-1]
+	}
+	if len(s) > 3 {
+		s = s[1:]
 	}
 	st := Stats{Seconds: len(s)}
 	if len(s) == 0 {
@@ -345,9 +371,15 @@ func Analyze(mbps []float64) Stats {
 	if st.MeanMbps > 0 {
 		st.CV = math.Sqrt(vs/float64(len(s))) / st.MeanMbps
 	}
-	for _, v := range s {
-		if v < 0.1*st.MedianMbps {
-			st.Stalls++
+	// a stall is a second far below the good seconds (90th percentile), so a
+	// transfer that is stuck most of the time still counts its stalls
+	// (needs a few seconds of data to mean anything)
+	if len(s) >= 4 {
+		p90 := Percentile(sorted, 90)
+		for _, v := range s {
+			if v <= 0 || v < 0.1*p90 {
+				st.Stalls++
+			}
 		}
 	}
 	return st
@@ -370,7 +402,7 @@ func Percentile(sorted []float64, p float64) float64 {
 func msSince(t time.Time) float64 { return float64(time.Since(t).Microseconds()) / 1000 }
 
 func shortErr(err error) string {
-	s := err.Error()
+	s := explain(err)
 	if len(s) > 160 {
 		s = s[:160] + "…"
 	}

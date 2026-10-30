@@ -12,6 +12,9 @@ import (
 func init() {
 	Register(kcpT{name: "kcp"})
 	Register(kcpT{name: "kcp-fec", data: 10, parity: 3})
+	// Same as kcp but with congestion control on: if kcp stalls and kcp-cc
+	// does not, the route is policing bursts rather than blocking KCP.
+	Register(kcpT{name: "kcp-cc", cc: true})
 }
 
 // kcpT is reliable, ordered transport over UDP, optionally with
@@ -19,6 +22,7 @@ func init() {
 type kcpT struct {
 	name         string
 	data, parity int
+	cc           bool
 }
 
 func (k kcpT) Name() string  { return k.name }
@@ -30,11 +34,16 @@ func (k kcpT) block(o Options) (kcp.BlockCrypt, error) {
 	return kcp.NewAESBlockCrypt(o.Key("kcp"))
 }
 
-// tune applies "fast" mode: nodelay, 10 ms interval, fast resend, no congestion window.
-func tuneKCP(s *kcp.UDPSession) {
+// tuneKCP applies "fast" mode: nodelay, 10 ms interval, fast resend, and no
+// congestion control unless cc is set.
+func tuneKCP(s *kcp.UDPSession, cc bool) {
 	s.SetStreamMode(true) //nolint:staticcheck // deprecated but still effective in v5.6: packs bulk data into full segments
 	s.SetWriteDelay(false)
-	s.SetNoDelay(1, 10, 2, 1)
+	nc := 1
+	if cc {
+		nc = 0
+	}
+	s.SetNoDelay(1, 10, 2, nc)
 	s.SetWindowSize(1024, 1024)
 	s.SetMtu(1350)
 	s.SetACKNoDelay(true)
@@ -42,14 +51,17 @@ func tuneKCP(s *kcp.UDPSession) {
 	_ = s.SetWriteBuffer(4 << 20)
 }
 
-type kcpListener struct{ *kcp.Listener }
+type kcpListener struct {
+	*kcp.Listener
+	cc bool
+}
 
 func (l kcpListener) Accept() (net.Conn, error) {
 	s, err := l.AcceptKCP()
 	if err != nil {
 		return nil, err
 	}
-	tuneKCP(s)
+	tuneKCP(s, l.cc)
 	return s, nil
 }
 
@@ -64,7 +76,7 @@ func (k kcpT) Listen(_ context.Context, addr string, o Options) (Listener, error
 	}
 	_ = l.SetReadBuffer(8 << 20)
 	_ = l.SetWriteBuffer(8 << 20)
-	return kcpListener{l}, nil
+	return kcpListener{Listener: l, cc: k.cc}, nil
 }
 
 func (k kcpT) Dial(_ context.Context, addr string, o Options) (net.Conn, error) {
@@ -76,6 +88,6 @@ func (k kcpT) Dial(_ context.Context, addr string, o Options) (net.Conn, error) 
 	if err != nil {
 		return nil, err
 	}
-	tuneKCP(s)
+	tuneKCP(s, k.cc)
 	return s, nil
 }

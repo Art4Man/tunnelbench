@@ -28,6 +28,8 @@ Each method goes through three stages:
 2. **Benchmark** — download and upload, single stream and 4 parallel streams, measured every second at the receiving side.
 3. **Soak** — the 3 best methods keep downloading for 5 minutes, reconnecting after every reset. This exposes duration-based kills and throttling that short tests miss.
 
+A method is **UNSTABLE** if it has stalled seconds (below 10% of its good seconds), moves no data in one direction, or one direction collapses below 10% of the other. `tunnelbench show -rescore <result.json>` re-applies the current rules to an older run.
+
 **DOWN** is Kharej → Iran (what users download in Instagram and Telegram); **UP** is Iran → Kharej. **FLOOR** is the 10th-percentile second, i.e. the speed on a bad second. **CV** is how much the speed varies (lower is steadier). The score weights download 30%, upload 15%, floor 20%, stability 20% and latency 15%, each relative to the best method in the same run.
 
 ## Methods
@@ -41,6 +43,7 @@ Each method goes through three stages:
 | `ws-mux`, `wss-mux` | WebSocket | smux over WebSocket |
 | `kcp` | UDP | KCP fast mode, AES |
 | `kcp-fec` | UDP | KCP with Reed-Solomon FEC 10:3 |
+| `kcp-cc` | UDP | KCP with congestion control; if `kcp` stalls and `kcp-cc` does not, the route polices bursts rather than blocking KCP |
 | `quic` | QUIC | TLS 1.3, HTTP/3 ALPN |
 
 Planned: raw UDP, Noise stealth, gRPC/HTTP2, fragmented TLS, raw-packet (fake TCP, KCP over raw TCP), ICMP, then real engines (BackPack, Backhaul, GOST, Rathole, kernel GRE/SIT, WireGuard, Hysteria2, paqet…) and an Xray end-to-end test. Comparing a protocol probe with an engine on the same protocol shows whether the filter blocks the protocol or fingerprints one engine.
