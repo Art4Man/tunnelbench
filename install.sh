@@ -25,8 +25,12 @@ if [[ -f "$HERE/$ARCHIVE" && -f "$HERE/SHA256SUMS" ]]; then
 else
   BASE="https://github.com/${REPO}/releases/latest/download"
   echo "Downloading $ARCHIVE from GitHub"
-  curl -fsSL -o "$WORK/$ARCHIVE" "$BASE/$ARCHIVE"
-  curl -fsSL -o "$WORK/SHA256SUMS" "$BASE/SHA256SUMS"
+  if ! curl -fsSL -o "$WORK/$ARCHIVE" "$BASE/$ARCHIVE" || ! curl -fsSL -o "$WORK/SHA256SUMS" "$BASE/SHA256SUMS"; then
+    echo "Could not download the latest release from github.com/${REPO}/releases." >&2
+    echo "If GitHub is unreachable from this server, copy $ARCHIVE, SHA256SUMS and install.sh" >&2
+    echo "here with scp and run: sudo bash install.sh" >&2
+    exit 1
+  fi
 fi
 
 cd "$WORK"
