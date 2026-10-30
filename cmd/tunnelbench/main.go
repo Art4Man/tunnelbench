@@ -35,6 +35,7 @@ Usage:
   tunnelbench local [flags]        run every method over loopback on this machine (self-test)
   tunnelbench show  [-rescore] <result-tb-….json>  print a saved result again
   tunnelbench methods              list the methods in this build
+  tunnelbench update [-force]      replace this binary with the latest release (run on both servers)
   tunnelbench version
 
 Run "tunnelbench run -h" for the benchmark flags.
@@ -57,6 +58,8 @@ func main() {
 		err = cmdJoin(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(os.Args[2:])
+	case "update":
+		err = cmdUpdate(os.Args[2:])
 	case "methods":
 		for _, t := range transport.All() {
 			root := ""

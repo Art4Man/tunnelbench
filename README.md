@@ -58,6 +58,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Art4Man/tunnelbench/main/ins
 
 If the Iran server cannot reach GitHub, download `tunnelbench_linux_amd64.tar.gz`, `SHA256SUMS` and `install.sh` from the [releases page](https://github.com/Art4Man/tunnelbench/releases) on another machine, `scp` them to the server and run `sudo bash install.sh` in that folder.
 
+To update later, run `sudo tunnelbench update` on **both** servers; it installs the latest release after checking its checksum. Builds from v0.1.0 do not have this command yet, so update those once with the install line above.
+
 **1. Iran server** — start the run; it prints a link:
 
 ```bash
