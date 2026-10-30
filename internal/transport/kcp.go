@@ -32,7 +32,7 @@ func (k kcpT) block(o Options) (kcp.BlockCrypt, error) {
 
 // tune applies "fast" mode: nodelay, 10 ms interval, fast resend, no congestion window.
 func tuneKCP(s *kcp.UDPSession) {
-	s.SetStreamMode(true)
+	s.SetStreamMode(true) //nolint:staticcheck // deprecated but still effective in v5.6: packs bulk data into full segments
 	s.SetWriteDelay(false)
 	s.SetNoDelay(1, 10, 2, 1)
 	s.SetWindowSize(1024, 1024)

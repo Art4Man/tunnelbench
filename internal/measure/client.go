@@ -90,7 +90,7 @@ func Probe(ctx context.Context, dial DialFunc, token string, tries int) ProbeRes
 
 func echo(c net.Conn, token string, n int) ([]float64, error) {
 	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
-	defer c.SetDeadline(time.Time{})
+	defer func() { _ = c.SetDeadline(time.Time{}) }()
 	if err := writeHeader(c, token, Request{Op: OpEcho}); err != nil {
 		return nil, err
 	}
