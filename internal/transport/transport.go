@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"fmt"
 	"math/big"
 	"net"
@@ -151,6 +152,21 @@ func serverTLS(o Options, alpn ...string) (*tls.Config, error) {
 		return nil, certErr
 	}
 	return &tls.Config{Certificates: []tls.Certificate{cert}, NextProtos: alpn, MinVersion: tls.VersionTLS12}, nil
+}
+
+// CertFingerprint returns the base64url SHA-256 of this process's server
+// certificate, which the pairing link carries so the agent can pin it.
+func CertFingerprint(o Options) (string, error) {
+	if _, err := serverTLS(o); err != nil {
+		return "", err
+	}
+	return Fingerprint(cert.Certificate[0]), nil
+}
+
+// Fingerprint is the base64url SHA-256 of a DER certificate.
+func Fingerprint(der []byte) string {
+	sum := sha256.Sum256(der)
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // ServerTLS and ClientTLS are used by the control channel.

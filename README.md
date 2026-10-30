@@ -61,10 +61,11 @@ If the Iran server cannot reach GitHub, download `tunnelbench_linux_amd64.tar.gz
 sudo tunnelbench run
 ```
 
-**2. Kharej server** — paste the link:
+**2. Kharej server** — run `join` and paste the link when it asks (this keeps the link out of shell history and `ps`):
 
 ```bash
-sudo tunnelbench join 'tb://<token>@<iran-ip>:20000?sni=www.speedtest.net'
+sudo tunnelbench join
+Paste the link from the Iran server: tb://<token>@<iran-ip>:20000?fp=<fingerprint>&sni=www.speedtest.net
 ```
 
 The test starts as soon as the agent joins. Results are printed as a table and saved to `tunnelbench-runs/<time>/result.json`; `tunnelbench show <file>` prints a saved run again.
@@ -90,6 +91,22 @@ sudo ufw allow 20000:20040/tcp && sudo ufw allow 20000:20040/udp
 | `-public-ip` | auto | Iran address the agent should dial |
 
 A full default run takes roughly 30–45 minutes; `-quick` takes about 10.
+
+## Security of the pairing link
+
+The link (`tb://<token>@<iran-ip>:<port>?fp=<fingerprint>&sni=…`) is a one-time credential for one run.
+
+| Protection | What it does |
+| --- | --- |
+| Single-use token | A new 128-bit token for every `run`, kept only in memory; when the run ends the control port closes and the link is dead |
+| Certificate pinning | `fp` is the SHA-256 of the Iran server's certificate; the agent refuses any other server, so the control channel cannot be intercepted |
+| Session-bound mutual authentication | Both sides prove they know the token with an HMAC over the TLS session's exported key (TLS 1.3), so a proof cannot be replayed or relayed |
+| One agent per run | The first agent to join owns the run; another agent with a valid link is refused and the Iran side prints a warning |
+| Agent limits | The agent only dials the Iran host from the link, only listens on the ports after the control port, and caps tests at 1 h, 100 probes and 16 streams |
+| Agent gives up | Without contact from the Iran server for 10 minutes, the agent exits |
+| Authenticated test ports | Every test connection must present an HMAC of the token; KCP traffic is encrypted with a key derived from it |
+
+TunnelBench never runs commands or reads files on either server. Treat the link like a one-time password anyway: do not post it in chats or screenshots.
 
 ## Development
 

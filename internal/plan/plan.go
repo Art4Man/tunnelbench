@@ -5,6 +5,7 @@ package plan
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -40,6 +41,33 @@ type Result struct {
 	PullN *measure.Transfer    `json:"pulln,omitempty"`
 	PushN *measure.Transfer    `json:"pushn,omitempty"`
 	Soak  *measure.Soak        `json:"soak,omitempty"`
+}
+
+// Limits an agent enforces on plans it receives, so a misbehaving or
+// impersonated runner cannot turn it into a long-running traffic source.
+const (
+	MaxDurationS = 3600
+	MaxTries     = 100
+	MaxStreams   = 16
+)
+
+// Validate rejects plans outside the limits.
+func (p Plan) Validate() error {
+	switch p.Stage {
+	case Probe, Bench, Soak:
+	default:
+		return fmt.Errorf("unknown stage %q", p.Stage)
+	}
+	if p.DurationS < 0 || p.DurationS > MaxDurationS {
+		return fmt.Errorf("duration %ds outside 0..%d", p.DurationS, MaxDurationS)
+	}
+	if p.Tries < 0 || p.Tries > MaxTries {
+		return fmt.Errorf("tries %d outside 0..%d", p.Tries, MaxTries)
+	}
+	if p.Streams < 0 || p.Streams > MaxStreams {
+		return fmt.Errorf("streams %d outside 0..%d", p.Streams, MaxStreams)
+	}
+	return nil
 }
 
 // Execute dials the method and runs the stage.

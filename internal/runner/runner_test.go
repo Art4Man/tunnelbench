@@ -29,17 +29,17 @@ func TestRunEndToEnd(t *testing.T) {
 	defer cancel()
 	base := freePort(t)
 	o := transport.Options{Token: pairing.NewToken(), SNI: "www.example.com"}
-	ctrl, err := control.Listen(net.JoinHostPort("127.0.0.1", strconv.Itoa(base)), o)
+	ctrl, err := control.Listen(net.JoinHostPort("127.0.0.1", strconv.Itoa(base)), o, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ctrl.Close()
-	link := pairing.Link{Token: o.Token, Host: "127.0.0.1", Port: base}
+	link := pairing.Link{Token: o.Token, Host: "127.0.0.1", Port: base, Pin: ctrl.Pin()}
 	parsed, err := pairing.Parse(link.String())
 	if err != nil || parsed.Token != o.Token {
 		t.Fatalf("link round trip: %v %+v", err, parsed)
 	}
-	agent := &control.Agent{Addr: parsed.Addr(), Opts: o, Version: "test"}
+	agent := &control.Agent{Addr: parsed.Addr(), Pin: parsed.Pin, Opts: o, Version: "test"}
 	go func() { _ = agent.Run(ctx) }()
 	hello, _, err := ctrl.WaitAgent(ctx)
 	if err != nil {

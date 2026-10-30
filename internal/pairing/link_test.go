@@ -3,7 +3,7 @@ package pairing
 import "testing"
 
 func TestLinkRoundTrip(t *testing.T) {
-	in := Link{Token: NewToken(), Host: "194.61.3.99", Port: 20000, SNI: "www.speedtest.net"}
+	in := Link{Token: NewToken(), Host: "194.61.3.99", Port: 20000, SNI: "www.speedtest.net", Pin: "q83vEjRWeJA-3q2-7_8AAQ"}
 	out, err := Parse(in.String())
 	if err != nil {
 		t.Fatal(err)

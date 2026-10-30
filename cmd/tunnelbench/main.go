@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -30,7 +31,7 @@ const usage = `tunnelbench — find the fastest, steadiest tunnel between two se
 
 Usage:
   tunnelbench run   [flags]        on the Iran server: print a link, wait for Kharej, run the benchmark
-  tunnelbench join  <tb://link>    on the Kharej server: connect to the Iran server and serve tests
+  tunnelbench join                 on the Kharej server: paste the link, then it serves tests
   tunnelbench local [flags]        run every method over loopback on this machine (self-test)
   tunnelbench show  <result.json>  print a saved result again
   tunnelbench methods              list the methods in this build
@@ -150,21 +151,23 @@ func cmdRun(ctx context.Context, args []string, local bool) error {
 	}
 
 	o := transport.Options{Token: pairing.NewToken(), SNI: *sni}
-	ctrl, err := control.Listen(*listen, o)
+	warn := func(msg string) { fmt.Fprintf(os.Stderr, "\nWARNING: %s\n", msg) }
+	ctrl, err := control.Listen(*listen, o, warn)
 	if err != nil {
 		return fmt.Errorf("control listener: %w", err)
 	}
 	defer ctrl.Close()
-	link := pairing.Link{Token: o.Token, Host: *publicIP, Port: base, SNI: *sni}
+	link := pairing.Link{Token: o.Token, Host: *publicIP, Port: base, SNI: *sni, Pin: ctrl.Pin()}
 	ml := splitList(*methods)
 	md := splitList(*modes)
 	last := base + len(ml)*len(md)
 
 	if local {
-		a := &control.Agent{Addr: link.Addr(), Opts: o, Version: version}
+		a := &control.Agent{Addr: link.Addr(), Pin: link.Pin, Opts: o, Version: version}
 		go func() { _ = a.Run(ctx) }()
 	} else {
-		fmt.Printf("\nOn the Kharej server run:\n\n  tunnelbench join '%s'\n\n", link)
+		fmt.Printf("\nOn the Kharej server run \"tunnelbench join\" and paste this one-time link when asked:\n\n  %s\n\n", link)
+		fmt.Println("The link works only for this run and only for the first agent that joins; keep it private.")
 		fmt.Printf("Open these ports on both servers (TCP and UDP): %d-%d\nWaiting for the Kharej agent… (Ctrl+C to cancel)\n", base, last)
 	}
 	hello, from, err := ctrl.WaitAgent(ctx)
@@ -202,14 +205,27 @@ func cmdRun(ctx context.Context, args []string, local bool) error {
 }
 
 func cmdJoin(ctx context.Context, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: tunnelbench join 'tb://TOKEN@IRAN_IP:PORT'")
+	var raw string
+	switch len(args) {
+	case 0:
+		fmt.Fprint(os.Stderr, "Paste the link from the Iran server: ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && line == "" {
+			return fmt.Errorf("reading link: %w", err)
+		}
+		raw = strings.TrimSpace(line)
+	case 1:
+		raw = args[0]
+		fmt.Fprintln(os.Stderr, "Tip: run \"tunnelbench join\" without arguments and paste the link, so it stays out of shell history and ps.")
+	default:
+		return errors.New("usage: tunnelbench join   (then paste the tb:// link)")
 	}
-	link, err := pairing.Parse(args[0])
+	link, err := pairing.Parse(strings.Trim(raw, "'\""))
 	if err != nil {
 		return err
 	}
 	a := &control.Agent{
+		Pin:     link.Pin,
 		Addr:    link.Addr(),
 		Opts:    transport.Options{Token: link.Token, SNI: link.SNI},
 		Version: version,

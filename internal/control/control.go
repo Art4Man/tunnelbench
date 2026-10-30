@@ -48,10 +48,12 @@ type Msg struct {
 	Resp   bool         `json:"resp,omitempty"`
 	Err    string       `json:"err,omitempty"`
 	Result *plan.Result `json:"result,omitempty"`
+	Proof  string       `json:"proof,omitempty"` // runner's proof in the hello reply
 }
 
 // Hello introduces the agent.
 type Hello struct {
+	AgentID  string   `json:"agent_id"` // random per agent process; the runner locks onto the first one
 	Auth     string   `json:"auth"`
 	Version  string   `json:"version"`
 	Hostname string   `json:"hostname"`
@@ -59,10 +61,26 @@ type Hello struct {
 	Methods  []string `json:"methods"`
 }
 
-func helloAuth(token string) string {
+// Errors the agent treats as final instead of reconnecting.
+var (
+	ErrLocked  = errors.New("the Iran server is already paired with another agent")
+	ErrBadPeer = errors.New("the Iran server failed authentication (wrong link, or the connection is being intercepted)")
+)
+
+const lockedErr = "locked"
+
+// proof shows knowledge of the token, bound to one TLS session through its
+// exported keying material, so it cannot be replayed or relayed elsewhere.
+func proof(token, role, agentID string, ekm []byte) string {
 	m := hmac.New(sha256.New, []byte(token))
-	m.Write([]byte("tunnelbench:hello"))
+	m.Write([]byte("tunnelbench:" + role + ":" + agentID + ":"))
+	m.Write(ekm)
 	return hex.EncodeToString(m.Sum(nil))
+}
+
+func exportKey(c *tls.Conn) ([]byte, error) {
+	cs := c.ConnectionState()
+	return cs.ExportKeyingMaterial("tunnelbench-control", nil, 32)
 }
 
 const idleTimeout = 45 * time.Second
@@ -94,8 +112,17 @@ func (p *peer) kill() {
 	})
 }
 
-func tlsClient(raw net.Conn, o transport.Options) net.Conn {
-	return tls.Client(raw, transport.ClientTLS(o))
+// pinnedTLS only accepts the certificate whose fingerprint is in the link.
+func pinnedTLS(o transport.Options, pin string) *tls.Config {
+	cfg := transport.ClientTLS(o)
+	cfg.MinVersion = tls.VersionTLS13
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 || transport.Fingerprint(cs.PeerCertificates[0].Raw) != pin {
+			return errors.New("certificate does not match the link fingerprint")
+		}
+		return nil
+	}
+	return cfg
 }
 
 // ---------------------------------------------------------------- runner side
@@ -104,6 +131,9 @@ func tlsClient(raw net.Conn, o transport.Options) net.Conn {
 type Controller struct {
 	token string
 	ln    net.Listener
+	pin   string
+	warn  func(string)
+	agent string // locked agent ID; empty until the first agent joins
 
 	mu      sync.Mutex
 	cur     *peer
@@ -112,9 +142,15 @@ type Controller struct {
 	nextID  atomic.Uint64
 }
 
-// Listen starts accepting agents on addr.
-func Listen(addr string, o transport.Options) (*Controller, error) {
+// Listen starts accepting agents on addr. warn, if set, is called when a
+// second agent tries to take over the session (a sign the link leaked).
+func Listen(addr string, o transport.Options, warn func(string)) (*Controller, error) {
 	cfg, err := transport.ServerTLS(o)
+	if err != nil {
+		return nil, err
+	}
+	cfg.MinVersion = tls.VersionTLS13
+	pin, err := transport.CertFingerprint(o)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +158,7 @@ func Listen(addr string, o transport.Options) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Controller{token: o.Token, ln: ln, changed: make(chan struct{}), pending: map[uint64]chan Msg{}}
+	c := &Controller{token: o.Token, ln: ln, pin: pin, warn: warn, changed: make(chan struct{}), pending: map[uint64]chan Msg{}}
 	go c.acceptLoop()
 	go c.pingLoop()
 	return c, nil
@@ -130,6 +166,9 @@ func Listen(addr string, o transport.Options) (*Controller, error) {
 
 // Addr is the bound control address.
 func (c *Controller) Addr() net.Addr { return c.ln.Addr() }
+
+// Pin is the certificate fingerprint to put in the pairing link.
+func (c *Controller) Pin() string { return c.pin }
 
 func (c *Controller) acceptLoop() {
 	for {
@@ -142,7 +181,17 @@ func (c *Controller) acceptLoop() {
 }
 
 func (c *Controller) handshake(conn net.Conn) {
-	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	tc, ok := conn.(*tls.Conn)
+	if !ok || tc.Handshake() != nil {
+		conn.Close()
+		return
+	}
+	ekm, err := exportKey(tc)
+	if err != nil {
+		conn.Close()
+		return
+	}
 	r := bufio.NewReader(conn)
 	line, err := r.ReadBytes('\n')
 	if err != nil {
@@ -150,17 +199,32 @@ func (c *Controller) handshake(conn net.Conn) {
 		return
 	}
 	var m Msg
-	if json.Unmarshal(line, &m) != nil || m.Cmd != CmdHello || m.Hello == nil ||
-		!hmac.Equal([]byte(m.Hello.Auth), []byte(helloAuth(c.token))) {
+	if json.Unmarshal(line, &m) != nil || m.Cmd != CmdHello || m.Hello == nil || m.Hello.AgentID == "" ||
+		!hmac.Equal([]byte(m.Hello.Auth), []byte(proof(c.token, "agent", m.Hello.AgentID, ekm))) {
 		conn.Close()
 		return
 	}
 	p := newPeer(conn)
 	p.hello = *m.Hello
-	if p.send(Msg{ID: m.ID, Resp: true}) != nil {
+	c.mu.Lock()
+	if c.agent == "" {
+		c.agent = m.Hello.AgentID
+	}
+	locked := c.agent != m.Hello.AgentID
+	c.mu.Unlock()
+	if locked {
+		_ = p.send(Msg{ID: m.ID, Resp: true, Err: lockedErr})
+		conn.Close()
+		if c.warn != nil {
+			c.warn(fmt.Sprintf("refused a second agent from %s that had a valid link; the session stays with the first agent (has the link leaked?)", conn.RemoteAddr()))
+		}
+		return
+	}
+	if p.send(Msg{ID: m.ID, Resp: true, Proof: proof(c.token, "runner", m.Hello.AgentID, ekm)}) != nil {
 		conn.Close()
 		return
 	}
+	_ = conn.SetWriteDeadline(time.Time{})
 	c.mu.Lock()
 	if c.cur != nil {
 		c.cur.kill()
