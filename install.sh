@@ -2,6 +2,8 @@
 # Install tunnelbench on a Linux server.
 #
 #   Online:  bash <(curl -fsSL https://raw.githubusercontent.com/Art4Man/tunnelbench/main/install.sh)
+#   A specific version or release candidate:
+#            TB_VERSION=v0.1.1-rc.1 bash <(curl -fsSL https://raw.githubusercontent.com/Art4Man/tunnelbench/main/install.sh)
 #   Offline: copy tunnelbench_linux_<arch>.tar.gz and SHA256SUMS next to this
 #            script (e.g. with scp) and run: sudo bash install.sh
 set -euo pipefail
@@ -24,7 +26,8 @@ if [[ -f "$HERE/$ARCHIVE" && -f "$HERE/SHA256SUMS" ]]; then
   cp "$HERE/$ARCHIVE" "$HERE/SHA256SUMS" "$WORK/"
 else
   BASE="https://github.com/${REPO}/releases/latest/download"
-  echo "Downloading $ARCHIVE from GitHub"
+  [[ -n "${TB_VERSION:-}" ]] && BASE="https://github.com/${REPO}/releases/download/${TB_VERSION}"
+  echo "Downloading $ARCHIVE ${TB_VERSION:-latest} from GitHub"
   if ! curl -fsSL -o "$WORK/$ARCHIVE" "$BASE/$ARCHIVE" || ! curl -fsSL -o "$WORK/SHA256SUMS" "$BASE/SHA256SUMS"; then
     echo "Could not download the latest release from github.com/${REPO}/releases." >&2
     echo "If GitHub is unreachable from this server, copy $ARCHIVE, SHA256SUMS and install.sh" >&2

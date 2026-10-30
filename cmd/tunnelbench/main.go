@@ -35,7 +35,8 @@ Usage:
   tunnelbench local [flags]        run every method over loopback on this machine (self-test)
   tunnelbench show  [-rescore] <result-tb-….json>  print a saved result again
   tunnelbench methods              list the methods in this build
-  tunnelbench update [-force]      replace this binary with the latest release (run on both servers)
+  tunnelbench update [-pre]        replace this binary with the latest release, or with -pre the latest
+                                   release candidate (run on both servers)
   tunnelbench version
 
 Run "tunnelbench run -h" for the benchmark flags.

@@ -7,15 +7,18 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,12 +41,13 @@ var httpc = &http.Client{
 func cmdUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	force := fs.Bool("force", false, "replace this binary even if it is a development build or newer than the release")
+	pre := fs.Bool("pre", false, "also install pre-releases (release candidates such as v0.1.1-rc.1)")
 	_ = fs.Parse(args)
 
 	if runtime.GOOS != "linux" {
 		return errors.New("releases are built for Linux only; on this machine use \"make build\"")
 	}
-	tag, err := latestTag()
+	tag, err := latestTag(*pre)
 	if err != nil {
 		return unreachable(err)
 	}
@@ -73,15 +77,15 @@ func cmdUpdate(args []string) error {
 	if err := replaceSelf(bin); err != nil {
 		return err
 	}
-	fmt.Printf("Updated %s → %s. Run \"tunnelbench update\" on the other server too; both must run the same version.\n", version, tag)
+	fmt.Printf("Updated %s → %s. Run the same update on the other server too; both must run the same version.\n", version, tag)
 	return nil
 }
 
-// shouldReplace decides whether to install release tag (e.g. "v0.1.1") over the
-// running version. Release builds report "0.1.0" (GoReleaser drops the "v");
-// builds from "make" report git describe output such as "v0.1.0-3-gaa2cdc9",
-// "aa2cdc9-dirty" or "dev". It returns false and a message for the user when it
-// keeps the current binary.
+// shouldReplace decides whether to install release tag (e.g. "v0.1.1" or
+// "v0.1.1-rc.1") over the running version. Release builds report "0.1.0" or
+// "0.1.1-rc.1" (GoReleaser drops the "v"); builds from "make" report git
+// describe output such as "v0.1.0-3-gaa2cdc9", "aa2cdc9-dirty" or "dev". It
+// returns false and a message for the user when it keeps the current binary.
 func shouldReplace(current, tag string, force bool) (bool, string) {
 	latest := strings.TrimPrefix(tag, "v")
 	if current == latest {
@@ -109,14 +113,42 @@ func shouldReplace(current, tag string, force bool) (bool, string) {
 	return false, "Already up to date (" + current + ")."
 }
 
-// release parses a plain "1.2.3" version; anything else (dev, git describe) is not a release.
-func release(v string) ([3]int, bool) {
-	var n [3]int
-	_, err := fmt.Sscanf(v, "%d.%d.%d", &n[0], &n[1], &n[2])
-	return n, err == nil && fmt.Sprintf("%d.%d.%d", n[0], n[1], n[2]) == v
+// release parses "1.2.3" or a release candidate "1.2.3-rc.4"; anything else
+// (dev, git describe) is not a release. A final release sorts after its candidates.
+func release(v string) ([4]int, bool) {
+	var n [4]int
+	base, rc, isRC := strings.Cut(v, "-rc.")
+	_, err := fmt.Sscanf(base, "%d.%d.%d", &n[0], &n[1], &n[2])
+	if err != nil || fmt.Sprintf("%d.%d.%d", n[0], n[1], n[2]) != base {
+		return n, false
+	}
+	n[3] = math.MaxInt
+	if isRC {
+		r, err := strconv.Atoi(rc)
+		if err != nil || strconv.Itoa(r) != rc {
+			return n, false
+		}
+		n[3] = r
+	}
+	return n, true
 }
 
-func latestTag() (string, error) {
+// latestTag returns the newest stable release, or with pre the newest release
+// of any kind (GitHub's /releases/latest never points at a pre-release).
+func latestTag(pre bool) (string, error) {
+	if pre {
+		b, err := fetch("https://api.github.com/repos/Art4Man/tunnelbench/releases?per_page=1")
+		if err != nil {
+			return "", err
+		}
+		var rs []struct {
+			Tag string `json:"tag_name"`
+		}
+		if err := json.Unmarshal(b, &rs); err != nil || len(rs) == 0 {
+			return "", fmt.Errorf("no release found")
+		}
+		return rs[0].Tag, nil
+	}
 	resp, err := httpc.Get(releases + "/latest")
 	if err != nil {
 		return "", err

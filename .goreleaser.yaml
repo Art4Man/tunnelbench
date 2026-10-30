@@ -25,3 +25,8 @@ changelog:
   sort: asc
   filters:
     exclude: ["^docs:", "^test:", "^ci:"]
+
+release:
+  # Tags like v0.1.1-rc.1 become GitHub pre-releases: "tunnelbench update -pre"
+  # installs them, plain "update" and install.sh keep to the latest stable release.
+  prerelease: auto

@@ -60,6 +60,8 @@ If the Iran server cannot reach GitHub, download `tunnelbench_linux_amd64.tar.gz
 
 To update later, run `sudo tunnelbench update` on **both** servers; it installs the latest release after checking its checksum. Builds from v0.1.0 do not have this command yet, so update those once with the install line above.
 
+**Release candidates.** Before a release, test builds are published as GitHub pre-releases named like `v0.1.1-rc.1`. To try them, run `sudo tunnelbench update -pre` on both servers (or, on a server without the `update` command, put `TB_VERSION=v0.1.1-rc.1` in front of the install line). Plain `tunnelbench update` only installs stable releases, and moves you from a candidate to the final release once it is out.
+
 **1. Iran server** — start the run; it prints a link:
 
 ```bash
